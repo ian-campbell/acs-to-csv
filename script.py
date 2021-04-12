@@ -5,38 +5,53 @@ usage: censusACS.py [-h] [-c config_json_file]
 
 """
 
-import argparse
+import pandas as pd
+import numpy as np
+import requests
 import json
 import os
-import pandas as pd
-import requests
 import sys
 import zipfile
+import argparse
 
+states = ['al', 'ak', 'az', 'ar', 'ca', 'co', 'ct', 'dc', 'de', 'fl', 'ga',
+          'hi', 'id', 'il', 'in', 'ia', 'ks', 'ky', 'la', 'me', 'md', 'ma',
+          'mi', 'mn', 'ms', 'mo', 'mt', 'ne', 'nv', 'nh', 'nj', 'nm', 'ny',
+          'nc', 'nd', 'oh', 'ok', 'or', 'pa', 'ri', 'sc', 'sd', 'tn', 'tx',
+          'ut', 'vt', 'va', 'wa', 'wv', 'wi', 'wy', 'us', 'pr']
 
-# Define helper functions
+summary_levels = {
+    'region' : '020',
+    'division' : '030',
+    'state' : '040',
+    'county' : '050',
+    'county_subdivision' : '060',
+    'subminor_civil_division' : '067',
+    'census_tract' : '140',
+    'block_group' : '150',
+    'place' : '160'
+}
 
 def stderr_print(*args, **kwargs):
     print(*args, **kwargs, file=sys.stderr, flush=True)
 
-
 def get_config(config=None):
     """
-    Return configuration dictionary, read in
-    from config.json, or default.
+    Return configuration dictionary read in from args
     """
 
     data = {}
     try:
-        with open(config) as fp:
+        with open(config.config) as fp:
             data = json.load(fp)
     except:
         pass
 
     return {
-        'year': data.get('year', '2015'),
-        'states': data.get('states', ['Colorado']),
-        'tables': data.get('tables', [])
+        'year': '2019',
+        'states': data.get('states', config.states),
+        'tables': data.get('tables', config.tables),
+        'level': data.get('level', config.level)
     }
 
 
@@ -86,6 +101,12 @@ def get_by_summary_level(df, summary_level):
     """
     return df[df['Summary Level'] == summary_level]
 
+def convert_seq_int_to_str(seqint):
+    """
+    Given a sequence integer, return a 4 character string representation
+    i.e. 1 >> '0001'
+    """
+    return(f'{seqint:04}')
 
 def get_templates(templates_zip_archive):
     """
@@ -97,10 +118,10 @@ def get_templates(templates_zip_archive):
     with zipfile.ZipFile(templates_zip_archive) as z:
         # Loop through all files in archive namelist
         for name in z.namelist():
-            if 'Seq' in name:
+            if 'seq' in name:
                 # Generate 4-digit sequence number string
-                index = name.index('Seq')
-                # Drop 'Seq' and separate sequence number from file extension
+                index = name.index('seq')
+                # Drop 'seq' and separate sequence number from file extension
                 s = name[index + 3:].split('.')[0]
                 # Generate number string
                 key = s.zfill(4)
@@ -110,7 +131,7 @@ def get_templates(templates_zip_archive):
                 # skip directories or other files
                 continue
             with z.open(name) as f:
-                df = pd.read_excel(f)
+                df = pd.read_excel(f, engine='openpyxl')
                 # Extract column names from data row 0
                 templates[key] = df.loc[0].tolist()
     return templates
@@ -140,6 +161,10 @@ def main(config=None):
     # ACS release year
     year = cfg['year']
 
+    # Summary level
+    summary_level = cfg['level'][0]
+    
+
     # Make data directories, if necessary
     sourcedir = os.path.join(os.getcwd(), 'ACS_data_' + year)
     try:
@@ -155,12 +180,14 @@ def main(config=None):
 
     # Assign variables
 
-    summary_level = '150'  # Block Group summary level
-    summary_file_suffix = '_Tracts_Block_Groups_Only.zip'
-    appendix_file = 'ACS_' + year + '_SF_5YR_Appendices.xls'
-    templates_file = year + '_5yr_Summary_FileTemplates.zip'
+    if summary_level == '150' or summary_level == '140':
+        summary_file_suffix = '_Tracts_Block_Groups_Only.zip'
+    else:
+        summary_file_suffix = '_All_Geographies_Not_Tracts_Block_Groups.zip'
+    appendix_file = 'ACS_2019_SF_5YR_Appendices.xlsx'
+    templates_file = '2019_5yr_Summary_FileTemplates.zip'
 
-    acs_base_url = 'https://www2.census.gov/programs-surveys/acs/summary_file/' + year
+    acs_base_url = 'https://www2.census.gov/programs-surveys/acs/summary_file/2019'
     by_state_base_url = acs_base_url + '/data/5_year_by_state/'
 
     # Note: The summary files (e.g. 5-year by state) are multi-MB files
@@ -170,29 +197,28 @@ def main(config=None):
     urls = [acs_base_url + '/documentation/tech_docs/' + appendix_file,
             acs_base_url + '/data/' + templates_file,
             ] + state_urls
-
     # Download files, as necessary
     for url in urls:
         basename, filename = os.path.split(url)
-        pathname = os.path.join(sourcedir, filename)
-        if not os.path.exists(pathname):
+        p = os.path.join(sourcedir, filename)
+        if not os.path.exists(p):
             print(f'Requesting file {url}')
             response = request_file(url)
             if response:
                 try:
-                    with open(pathname, 'wb') as w:
+                    with open(p, 'wb') as w:
                         w.write(response.content)
-                        print(f'File {pathname} downloaded successfully')
+                        print(f'File {p} downloaded successfully')
                 except OSError as e:
-                    stderr_print(f'Error {e}: File write on {pathname} failed')
+                    stderr_print(f'Error {e}: File write on {p} failed')
 
     # Read ACS 5-year Appendix A for Table sequence numbers, start/end records
     pathname = os.path.join(sourcedir, appendix_file)
     with open(pathname, 'rb') as r:
-        appx_A = pd.read_excel(r, converters={'Summary File Sequence Number': str})
-        appx_A.columns = ['name', 'title', 'restr', 'seq', 'start_end']
+        appx_A = pd.read_excel(r, converters={'Summary File Sequence Number': convert_seq_int_to_str}, engine='openpyxl')
+        appx_A.columns = ['name', 'title', 'restr', 'seq', 'start_end', 'topics', 'universe']
         try:
-            appx_A['start'], appx_A['end'] = appx_A['start_end'].str.split('-', 1).str
+            appx_A[['start', 'end']] = appx_A['start_end'].str.split('-', 1, expand=True)
             appx_A['start'] = pd.to_numeric(appx_A['start'])
             appx_A['end'] = pd.to_numeric(appx_A['end'])
         except ValueError as e:
@@ -200,17 +226,22 @@ def main(config=None):
             stderr_print(f'File {pathname} is corrupt or has invalid format')
             raise SystemExit(f'Exiting {__file__}')
 
+    
     # Create Tables list
-    tables = appx_A.drop(['restr', 'seq', 'start_end', 'start', 'end'], axis=1)
+    tables = appx_A.drop(['restr', 'seq', 'start_end', 'start', 'end', 'topics', 'universe'], axis=1)
     pathname = os.path.join(outdir, 'ACS All Tables.csv')
     # Save table Names and Titles to CSV.
     tables.to_csv(pathname, index=False)
     # Now check for limited table list from input config file.
     all_tables = cfg['tables'] if cfg['tables'] else tables['name'].tolist()
 
-    # Create the templates dictionary
-    pathname = os.path.join(sourcedir, templates_file)
-    templates = get_templates(pathname)
+    # Create the templates dictionary and rename duplicate columns
+    pathname2 = os.path.join(sourcedir, templates_file)
+    templates = get_templates(pathname2)
+    for i in range(len(templates['geo'])):
+        if templates['geo'][i] == 'Reserved Future Use':
+            newcolname = templates['geo'][i] + str(i)
+            templates['geo'][i] = newcolname
 
     # For each state and table name, generate output table
     for state in states:
@@ -237,18 +268,14 @@ def main(config=None):
                 e = [f for f in z.namelist() if f.startswith('e')]
                 # Pull sequence number from file name positions 8-11; use as dict key
                 efiles = {f[8:12]: f for f in e}
-                # Get Margin-of-Error file names
-                m = [f for f in z.namelist() if f.startswith('m')]
-                # Pull sequence number from file name positions 8-11; use as dict key
-                mfiles = {f[8:12]: f for f in m}
                 built = 0
                 # Process all tables
                 for n, table in enumerate(all_tables):
                     sequence_data = []
-                    # For this table, get file sequence numbers, start/end record numbers
+                    # For this table, get file sequence numbers, start/end record numbers (as strings)
                     seqs, starts, ends = get_appendix_data(appx_A, table)
                     for seq, start, end in zip(seqs, starts, ends):
-                        # Get summary and margin file, based on sequence number
+                        # Get summary file based on sequence number
                         template = templates[seq]
                         try:
                             efile = efiles[seq]
@@ -259,35 +286,13 @@ def main(config=None):
                             stderr_print(f'{e}')
                             break
 
-                        try:
-                            mfile = mfiles[seq]
-                            with z.open(mfile) as m:
-                                mdf = read_summary_file(m, names=template)
-                        except OSError as e:
-                            stderr_print(f'Margins file {mfile} error for {state}')
-                            stderr_print(f'{e}')
-                            break
-
-                        # Merge the estimates and margins with the logical records
+                        # Merge the estimates with the logical records
                         edf = edf.merge(logi_recs).set_index('Geographic Identifier')
-                        mdf = mdf.merge(logi_recs).set_index('Geographic Identifier')
                         # Keep only data columns
                         use_col_nums = list(range(start - 1, end))
                         edf = edf.iloc[:, use_col_nums]
-                        mdf = mdf.iloc[:, use_col_nums]
-                        # Prepend E/M to column names for Estimates/Margins-of-Error
-                        edf.columns = ['E: ' + col for col in edf.columns]
-                        mdf.columns = ['M: ' + col for col in mdf.columns]
-                        # Join DataFrames
-                        df = pd.concat([edf, mdf], axis=1)
-                        # Interleave Estimate and Margin-of-Error columns
-                        new_columns = [None] * (len(edf.columns) + len(mdf.columns))
-                        new_columns[::2] = edf.columns
-                        new_columns[1::2] = mdf.columns
-                        # Reorder columns using interleaved labels
-                        df = df[new_columns]
                         # Save DataFrame to list
-                        sequence_data.append(df)
+                        sequence_data.append(edf)
 
                     # Guard rail against file errors above
                     if sequence_data:
@@ -300,12 +305,8 @@ def main(config=None):
 
                         # Save non-empty table as CSV
                         if not df.drop('Geographic Identifier', axis=1).dropna().empty:
-                            # Conform Geo ID w/ GEOID in Census Block Group shapefiles
-                            df = df.rename(columns={'Geographic Identifier': 'GEOID'})
-                            # Strip GEOID to last 12 characters
-                            df['GEOID'] = df['GEOID'].apply(lambda x: x[-12:])
-                            pathname = os.path.join(outdir, state + table + '.csv')
-                            df.to_csv(pathname, index=False)
+                            table_csv_pathname = os.path.join(outdir, state + table + '.csv')
+                            df.to_csv(table_csv_pathname, index=False)
                             built += 1
 
                     # Print progress percentage
@@ -322,5 +323,8 @@ def main(config=None):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description="Generate US Census ACS Detailed Tables")
     parser.add_argument("-c", "--config")
+    parser.add_argument("-l", "--level", nargs='+', help='Geographic level')
+    parser.add_argument("-s", "--states", nargs='+', help='<Required> Set flag')
+    parser.add_argument("-t", "--tables", nargs='+', help='<Required> Set flag')
     args = parser.parse_args()
-    main(args.config)
+    main(args)
