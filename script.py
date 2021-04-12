@@ -14,11 +14,15 @@ import sys
 import zipfile
 import argparse
 
-states = ['al', 'ak', 'az', 'ar', 'ca', 'co', 'ct', 'dc', 'de', 'fl', 'ga',
+states_fips = ['al', 'ak', 'az', 'ar', 'ca', 'co', 'ct', 'dc', 'de', 'fl', 'ga',
           'hi', 'id', 'il', 'in', 'ia', 'ks', 'ky', 'la', 'me', 'md', 'ma',
           'mi', 'mn', 'ms', 'mo', 'mt', 'ne', 'nv', 'nh', 'nj', 'nm', 'ny',
           'nc', 'nd', 'oh', 'ok', 'or', 'pa', 'ri', 'sc', 'sd', 'tn', 'tx',
           'ut', 'vt', 'va', 'wa', 'wv', 'wi', 'wy', 'us', 'pr']
+
+states_list = ['Alabama', 'Alaska', 'Arizona', 'Arkansas', 'California',
+    'Colorado', 'Connecticut', 'DistrictOfColumbia', 'Delaware', 'Florida',
+    'Georgia']
 
 summary_levels = {
     'region' : '020',
