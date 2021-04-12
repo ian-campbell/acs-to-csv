@@ -22,19 +22,16 @@ states_fips = ['al', 'ak', 'az', 'ar', 'ca', 'co', 'ct', 'dc', 'de', 'fl', 'ga',
 
 states_list = ['Alabama', 'Alaska', 'Arizona', 'Arkansas', 'California',
     'Colorado', 'Connecticut', 'DistrictOfColumbia', 'Delaware', 'Florida',
-    'Georgia']
+    'Georgia', 'Hawaii', 'Idaho', 'Illinois', 'Indiana', 'Iowa', 'Kansas',
+    'Kentucky', 'Louisiana', 'Maine', 'Maryland', 'Massachusetts', 'Michigan',
+    'Minnesota', 'Mississippi', 'Missouri', 'Montana', 'Nebraska', 'Nevada',
+    'NewHampshire', 'NewJersey', 'NewMexico', 'NewYork', 'NorthCarolina', 
+    'NorthDakota', 'Ohio', 'Oklahoma', 'Oregon', 'Pennsylvania', 'RhodeIsland',
+    'SouthCarolina', 'SouthDakota', 'Tennessee', 'Texas', 'Utah', 'Vermont',
+    'Virginia', 'Washington', 'WestVirginia', 'Wisconsin', 'Wyoming', 
+    'UnitedStates', 'PuertoRico']
 
-summary_levels = {
-    'region' : '020',
-    'division' : '030',
-    'state' : '040',
-    'county' : '050',
-    'county_subdivision' : '060',
-    'subminor_civil_division' : '067',
-    'census_tract' : '140',
-    'block_group' : '150',
-    'place' : '160'
-}
+
 
 def stderr_print(*args, **kwargs):
     print(*args, **kwargs, file=sys.stderr, flush=True)
@@ -44,12 +41,46 @@ def get_config(config=None):
     Return configuration dictionary read in from args
     """
 
+    required_args = ['level', 'states', 'tables']
+
+    summary_levels = {
+        'region' : '020',
+        'division' : '030',
+        'state' : '040',
+        'county' : '050',
+        'county_subdivision' : '060',
+        'subminor_civil_division' : '067',
+        'census_tract' : '140',
+        'block_group' : '150',
+        'place' : '160'
+    }
+
     data = {}
     try:
         with open(config.config) as fp:
-            data = json.load(fp)
+            data1 = json.load(fp)
+            for e in data1:
+                if data1[e]:
+                    data[e] = data1[e]
     except:
         pass
+
+    # Collect command line arguments into data dict
+    argsdict = vars(config)
+    for entry in argsdict:
+        if entry not in data:
+            data[entry] = argsdict[entry]
+
+    # Check for required arguments
+    for key in required_args:
+        if not data[key]:
+            stderr_print(f'Error: Missing required argument: --{key}.')
+            return None
+
+
+    # Convert summary level name to FIPS code if given
+    if not data['level'][0].isdigit():
+        data['level'] = [summary_levels[level] for level in data['level']]
 
     return {
         'year': '2019',
@@ -166,7 +197,7 @@ def main(config=None):
     year = cfg['year']
 
     # Summary level
-    summary_level = cfg['level'][0]
+    summary_levels = cfg['level']
     
 
     # Make data directories, if necessary
@@ -184,10 +215,8 @@ def main(config=None):
 
     # Assign variables
 
-    if summary_level == '150' or summary_level == '140':
-        summary_file_suffix = '_Tracts_Block_Groups_Only.zip'
-    else:
-        summary_file_suffix = '_All_Geographies_Not_Tracts_Block_Groups.zip'
+    summary_file_tracts_suffix = '_Tracts_Block_Groups_Only.zip'
+    summary_file_not_tracts_suffix = '_All_Geographies_Not_Tracts_Block_Groups.zip'
     appendix_file = 'ACS_2019_SF_5YR_Appendices.xlsx'
     templates_file = '2019_5yr_Summary_FileTemplates.zip'
 
@@ -196,11 +225,13 @@ def main(config=None):
 
     # Note: The summary files (e.g. 5-year by state) are multi-MB files
     states = cfg['states']
-    state_urls = [by_state_base_url + state + summary_file_suffix for state in states]
+    state_tracts_urls = [by_state_base_url + state + summary_file_tracts_suffix for state in states]
+    state_not_tracts_urls = [by_state_base_url + state + summary_file_not_tracts_suffix for state in states]
 
     urls = [acs_base_url + '/documentation/tech_docs/' + appendix_file,
             acs_base_url + '/data/' + templates_file,
-            ] + state_urls
+            ] + state_tracts_urls + state_not_tracts_urls
+
     # Download files, as necessary
     for url in urls:
         basename, filename = os.path.split(url)
@@ -251,84 +282,91 @@ def main(config=None):
     for state in states:
         print(f'Building tables for {state}')
         # Unzip and open the summary files
-        pathname = os.path.join(sourcedir, state + summary_file_suffix)
-        try:
-            with zipfile.ZipFile(pathname) as z:
-                # Get Geography CSV file name
-                geofile = [f for f in z.namelist()
-                           if f.startswith('g') and f.endswith('csv')
-                           ][0]
-                # Open and read the Geography file
-                try:
-                    with z.open(geofile) as g:
-                        # Get Geo IDs and Logical Record Numbers for this Summary Level
-                        logi_recs = get_logical_records(g, templates['geo'], summary_level)
-                except OSError as e:
-                    stderr_print(f'Geofile error for {state}')
-                    stderr_print(f'{e}')
-                    continue
+        for summary_level in summary_levels:
+            if summary_level == '140' or summary_level == '150':
+                summary_file_suffix = summary_file_tracts_suffix
+            else:
+                summary_file_suffix = summary_file_not_tracts_suffix
+            pathname = os.path.join(sourcedir, state + summary_file_suffix)
+            try:
+                with zipfile.ZipFile(pathname) as z:
+                    # Get Geography CSV file name
+                    geofile = [f for f in z.namelist()
+                            if f.startswith('g') and f.endswith('csv')
+                            ][0]
+                    # Open and read the Geography file
+                    try:
+                        with z.open(geofile) as g:
+                            # Get Geo IDs and Logical Record Numbers for this Summary Level
+                            logi_recs = get_logical_records(g, templates['geo'], summary_level)
+                    except OSError as e:
+                        stderr_print(f'Geofile error for {state}')
+                        stderr_print(f'{e}')
+                        continue
 
-                # Get Estimate file names
-                e = [f for f in z.namelist() if f.startswith('e')]
-                # Pull sequence number from file name positions 8-11; use as dict key
-                efiles = {f[8:12]: f for f in e}
-                built = 0
-                # Process all tables
-                for n, table in enumerate(all_tables):
-                    sequence_data = []
-                    # For this table, get file sequence numbers, start/end record numbers (as strings)
-                    seqs, starts, ends = get_appendix_data(appx_A, table)
-                    for seq, start, end in zip(seqs, starts, ends):
-                        # Get summary file based on sequence number
-                        template = templates[seq]
-                        try:
-                            efile = efiles[seq]
-                            with z.open(efile) as e:
-                                edf = read_summary_file(e, names=template)
-                        except OSError as e:
-                            stderr_print(f'Estimates file {efile} error for {state}')
-                            stderr_print(f'{e}')
-                            break
+                    # Get Estimate file names
+                    e = [f for f in z.namelist() if f.startswith('e')]
+                    # Pull sequence number from file name positions 8-11; use as dict key
+                    efiles = {f[8:12]: f for f in e}
+                    built = 0
+                    # Process all tables
+                    for n, table in enumerate(all_tables):
+                        sequence_data = []
+                        # For this table, get file sequence numbers, start/end record numbers (as strings)
+                        seqs, starts, ends = get_appendix_data(appx_A, table)
+                        for seq, start, end in zip(seqs, starts, ends):
+                            # Get summary file based on sequence number
+                            template = templates[seq]
+                            try:
+                                efile = efiles[seq]
+                                with z.open(efile) as e:
+                                    edf = read_summary_file(e, names=template)
+                            except OSError as e:
+                                stderr_print(f'Estimates file {efile} error for {state}')
+                                stderr_print(f'{e}')
+                                break
 
-                        # Merge the estimates with the logical records
-                        edf = edf.merge(logi_recs).set_index('Geographic Identifier')
-                        # Keep only data columns
-                        use_col_nums = list(range(start - 1, end))
-                        edf = edf.iloc[:, use_col_nums]
-                        # Save DataFrame to list
-                        sequence_data.append(edf)
+                            # Merge the estimates with the logical records
+                            edf = edf.merge(logi_recs).set_index('Geographic Identifier')
+                            # Keep only data columns
+                            use_col_nums = list(range(start - 1, end))
+                            edf = edf.iloc[:, use_col_nums]
+                            # Save DataFrame to list
+                            sequence_data.append(edf)
 
-                    # Guard rail against file errors above
-                    if sequence_data:
+                        # Guard rail against file errors above
+                        if sequence_data:
 
-                        # Concatenate multiple data frames column-wise
-                        df = pd.concat(sequence_data, axis=1)
+                            # Concatenate multiple data frames column-wise
+                            df = pd.concat(sequence_data, axis=1)
 
-                        # Reset 'Geographic Identifier' from index to column
-                        df.reset_index(inplace=True)
+                            # Reset 'Geographic Identifier' from index to column
+                            df.reset_index(inplace=True)
 
-                        # Save non-empty table as CSV
-                        if not df.drop('Geographic Identifier', axis=1).dropna().empty:
-                            table_csv_pathname = os.path.join(outdir, state + table + '.csv')
-                            df.to_csv(table_csv_pathname, index=False)
-                            built += 1
+                            # Save non-empty table as CSV
+                            if not df.drop('Geographic Identifier', axis=1).dropna().empty:
+                                table_csv_pathname = os.path.join(outdir, state + table + '.csv')
+                                with open(table_csv_pathname, 'a') as f:
+                                    df.to_csv(f, header=f.tell()==0)
+                                built += 1
 
-                    # Print progress percentage
-                    progress_report(n / len(all_tables))
+                        # Print progress percentage
+                        progress_report(n / len(all_tables))
 
-                print(f'\n{state} tables: saved {built}, dropped {n + 1 - built} empty')
+                    print(f'\n{state} tables: saved {built}, dropped {n + 1 - built} empty')
 
-        except OSError as e:
-            stderr_print(f'Summary file error for {pathname}')
-            stderr_print(f'{e}')
-            continue
+            except OSError as e:
+                stderr_print(f'Summary file error for {pathname}')
+                stderr_print(f'{e}')
+                continue
 
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description="Generate US Census ACS Detailed Tables")
     parser.add_argument("-c", "--config")
-    parser.add_argument("-l", "--level", nargs='+', help='Geographic level')
-    parser.add_argument("-s", "--states", nargs='+', help='<Required> Set flag')
-    parser.add_argument("-t", "--tables", nargs='+', help='<Required> Set flag')
+    parser.add_argument("-l", "--level", nargs='+', help='One or more Geographic levels')
+    parser.add_argument("-s", "--states", nargs='+', help='One or more States')
+    parser.add_argument("-t", "--tables", nargs='+', help='One or more Tables')
     args = parser.parse_args()
+    print(get_config(args))
     main(args)
