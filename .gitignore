@@ -1,3 +1,4 @@
 myenv
 .DS_Store
 ACS_data_2019/
+*.pyc
