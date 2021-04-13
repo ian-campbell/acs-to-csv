@@ -1,5 +1,8 @@
-# 2019 American Community Survey data table builder
+# American Community Survey to CSV
 
 #### This project is licensed under the terms of the MIT license. 
 
-This script only works with the most recent version (2019) of the American Community Survey.
+This script works with the 2019 American Community Survey 5 year edition.
+
+
+python3 script.py -h
