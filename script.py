@@ -128,7 +128,7 @@ def read_summary_file(file, names):
     ready for data extraction.
     """
     df = read_from_csv(file, names=names)
-    return df.rename(columns={'SEQUENCE': 'seq', 'LOGRECNO': 'Logical Record Number'})
+    return df.rename(columns={'SEQUENCE': 'seq'})
 
 
 def get_appendix_data(df, table):
@@ -145,7 +145,7 @@ def get_by_summary_level(df, summary_level):
     Given Geography file DataFrame df, return a subset DataFrame,
     filtered by Census geographic summary level.
     """
-    return df[df['Summary Level'] == summary_level]
+    return df[df['SUMLEVEL'] == summary_level]
 
 def convert_seq_int_to_str(seqint):
     """
@@ -179,7 +179,7 @@ def get_templates(templates_zip_archive):
             with z.open(name) as f:
                 df = pd.read_excel(f, engine='openpyxl')
                 # Extract column names from data row 0
-                templates[key] = df.loc[0].tolist()
+                templates[key] = df.columns
     return templates
 
 
@@ -192,7 +192,7 @@ def get_logical_records(fp, names, summary_level):
     """
     gdf = read_from_csv(fp, names=names)
     summary_geo = get_by_summary_level(gdf, summary_level)
-    return summary_geo[['Geographic Identifier', 'Logical Record Number']]
+    return summary_geo[['GEOID', 'LOGRECNO']]
 
 
 def progress_report(fraction):
@@ -283,13 +283,9 @@ def main(config=None):
     if cfg['tables'][0].lower() == 'all':
         all_tables = tables['name'].tolist()
 
-    # Create the templates dictionary and rename duplicate columns
+    # Create the templates dictionary
     pathname2 = os.path.join(sourcedir, templates_file)
     templates = get_templates(pathname2)
-    for i in range(len(templates['geo'])):
-        if templates['geo'][i] == 'Reserved Future Use':
-            newcolname = templates['geo'][i] + str(i)
-            templates['geo'][i] = newcolname
 
     # For each state and table name, generate output table
     for state in states:
@@ -340,7 +336,7 @@ def main(config=None):
                                 break
 
                             # Merge the estimates with the logical records
-                            edf = edf.merge(logi_recs).set_index('Geographic Identifier')
+                            edf = edf.merge(logi_recs).set_index('GEOID')
                             # Keep only data columns
                             use_col_nums = list(range(start - 1, end))
                             edf = edf.iloc[:, use_col_nums]
@@ -357,11 +353,10 @@ def main(config=None):
                             df.reset_index(inplace=True)
 
                             # Save non-empty table as CSV
-                            if not df.drop('Geographic Identifier', axis=1).dropna().empty:
-                                table_csv_pathname = os.path.join(outdir, state + table + '.csv')
-                                with open(table_csv_pathname, 'a') as f:
-                                    df.to_csv(f, header=f.tell()==0, index=False)
-                                built += 1
+                            table_csv_pathname = os.path.join(outdir, state + table + '.csv')
+                            with open(table_csv_pathname, 'a') as f:
+                                df.to_csv(f, header=f.tell()==0, index=False)
+                            built += 1
 
                         # Print progress percentage
                         progress_report(n / len(all_tables))
