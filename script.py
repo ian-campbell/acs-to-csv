@@ -347,7 +347,7 @@ def main(config=None):
                             if not df.drop('Geographic Identifier', axis=1).dropna().empty:
                                 table_csv_pathname = os.path.join(outdir, state + table + '.csv')
                                 with open(table_csv_pathname, 'a') as f:
-                                    df.to_csv(f, header=f.tell()==0)
+                                    df.to_csv(f, header=f.tell()==0, index=False)
                                 built += 1
 
                         # Print progress percentage
