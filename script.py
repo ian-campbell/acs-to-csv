@@ -20,17 +20,6 @@ states_fips = ['al', 'ak', 'az', 'ar', 'ca', 'co', 'ct', 'dc', 'de', 'fl', 'ga',
           'nc', 'nd', 'oh', 'ok', 'or', 'pa', 'ri', 'sc', 'sd', 'tn', 'tx',
           'ut', 'vt', 'va', 'wa', 'wv', 'wi', 'wy', 'us', 'pr']
 
-states_list = ['Alabama', 'Alaska', 'Arizona', 'Arkansas', 'California',
-    'Colorado', 'Connecticut', 'DistrictOfColumbia', 'Delaware', 'Florida',
-    'Georgia', 'Hawaii', 'Idaho', 'Illinois', 'Indiana', 'Iowa', 'Kansas',
-    'Kentucky', 'Louisiana', 'Maine', 'Maryland', 'Massachusetts', 'Michigan',
-    'Minnesota', 'Mississippi', 'Missouri', 'Montana', 'Nebraska', 'Nevada',
-    'NewHampshire', 'NewJersey', 'NewMexico', 'NewYork', 'NorthCarolina', 
-    'NorthDakota', 'Ohio', 'Oklahoma', 'Oregon', 'Pennsylvania', 'RhodeIsland',
-    'SouthCarolina', 'SouthDakota', 'Tennessee', 'Texas', 'Utah', 'Vermont',
-    'Virginia', 'Washington', 'WestVirginia', 'Wisconsin', 'Wyoming', 
-    'UnitedStates', 'PuertoRico']
-
 
 
 def stderr_print(*args, **kwargs):
@@ -42,6 +31,17 @@ def get_config(config=None):
     """
 
     required_args = ['level', 'states', 'tables']
+
+    states_list = ['Alabama', 'Alaska', 'Arizona', 'Arkansas', 'California',
+        'Colorado', 'Connecticut', 'DistrictOfColumbia', 'Delaware', 'Florida',
+        'Georgia', 'Hawaii', 'Idaho', 'Illinois', 'Indiana', 'Iowa', 'Kansas',
+        'Kentucky', 'Louisiana', 'Maine', 'Maryland', 'Massachusetts', 'Michigan',
+        'Minnesota', 'Mississippi', 'Missouri', 'Montana', 'Nebraska', 'Nevada',
+        'NewHampshire', 'NewJersey', 'NewMexico', 'NewYork', 'NorthCarolina', 
+        'NorthDakota', 'Ohio', 'Oklahoma', 'Oregon', 'Pennsylvania', 'RhodeIsland',
+        'SouthCarolina', 'SouthDakota', 'Tennessee', 'Texas', 'Utah', 'Vermont',
+        'Virginia', 'Washington', 'WestVirginia', 'Wisconsin', 'Wyoming', 
+        'UnitedStates', 'PuertoRico']
 
     summary_levels = {
         'region' : '020',
@@ -77,11 +77,22 @@ def get_config(config=None):
             stderr_print(f'Error: Missing required argument: --{key}.')
             return None
 
-
     # Convert summary level name to FIPS code if given
-    if not data['level'][0].isdigit():
-        data['level'] = [summary_levels[level] for level in data['level']]
+    sumlevels = []
+    for sumlev in data['level']:
+        l = sumlev
+        if not l.isdigit():
+            if not l.lower() == 'all':
+                l = summary_levels[l]
+        sumlevels.append(l)
+    data['level'] = sumlevels
 
+    # Handle option 'all' for tables or level
+    if data['level'][0].lower() == 'all':
+        data['level'] = [summary_levels[e] for e in summary_levels]
+    if data['states'][0].lower() == 'all':
+        data['states'] = [state for state in states_list]
+    
     return {
         'year': '2019',
         'states': data.get('states', config.states),
@@ -199,7 +210,6 @@ def main(config=None):
     # Summary level
     summary_levels = cfg['level']
     
-
     # Make data directories, if necessary
     sourcedir = os.path.join(os.getcwd(), 'ACS_data_' + year)
     try:
@@ -268,7 +278,10 @@ def main(config=None):
     # Save table Names and Titles to CSV.
     tables.to_csv(pathname, index=False)
     # Now check for limited table list from input config file.
-    all_tables = cfg['tables'] if cfg['tables'] else tables['name'].tolist()
+    # If 'all' then use all tables
+    all_tables = cfg['tables']
+    if cfg['tables'][0].lower() == 'all':
+        all_tables = tables['name'].tolist()
 
     # Create the templates dictionary and rename duplicate columns
     pathname2 = os.path.join(sourcedir, templates_file)
