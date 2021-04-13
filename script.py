@@ -292,11 +292,13 @@ def main(config=None):
         print(f'Building tables for {state}')
         # Unzip and open the summary files
         for summary_level in summary_levels:
+            
             if summary_level == '140' or summary_level == '150':
                 summary_file_suffix = summary_file_tracts_suffix
             else:
                 summary_file_suffix = summary_file_not_tracts_suffix
             pathname = os.path.join(sourcedir, state + summary_file_suffix)
+
             try:
                 with zipfile.ZipFile(pathname) as z:
                     # Get Geography CSV file name
@@ -349,11 +351,14 @@ def main(config=None):
                             # Concatenate multiple data frames column-wise
                             df = pd.concat(sequence_data, axis=1)
 
-                            # Reset 'Geographic Identifier' from index to column
+                            # Reset 'GEOID' from index to column
                             df.reset_index(inplace=True)
 
-                            # Save non-empty table as CSV
-                            table_csv_pathname = os.path.join(outdir, state + table + '.csv')
+                            # Save as CSV
+                            if len(states) == 53:
+                                table_csv_pathname = os.path.join(outdir, table + '.csv')
+                            else:
+                                table_csv_pathname = os.path.join(outdir, state + table + '.csv')
                             with open(table_csv_pathname, 'a') as f:
                                 df.to_csv(f, header=f.tell()==0, index=False)
                             built += 1
@@ -370,11 +375,13 @@ def main(config=None):
 
 
 if __name__ == '__main__':
-    parser = argparse.ArgumentParser(description="Generate US Census ACS Detailed Tables")
+    parser = argparse.ArgumentParser(description="Generate US Census ACS Detailed Tables", 
+                                    epilog='''Use "all" or "All" 
+                                    for any option, for instance: -l "all" -s "California" -t "B01001" ''')
     parser.add_argument("-c", "--config")
-    parser.add_argument("-l", "--level", nargs='+', help='One or more Geographic levels')
-    parser.add_argument("-s", "--states", nargs='+', help='One or more States')
-    parser.add_argument("-t", "--tables", nargs='+', help='One or more Tables')
+    parser.add_argument("-l", "--level", nargs='+', help='One or more Geographic levels i.e. "place" "block_group" ')
+    parser.add_argument("-s", "--states", nargs='+', help='One or more States i.e. "Maryland" "NewYork" "NorthCarolina" ')
+    parser.add_argument("-t", "--tables", nargs='+', help='One or more Tables i.e. "B01001" "B02001" "B05006" ')
     args = parser.parse_args()
     print(get_config(args))
     main(args)
