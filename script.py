@@ -13,6 +13,7 @@ import os
 import sys
 import zipfile
 import argparse
+import time
 
 states_fips = ['al', 'ak', 'az', 'ar', 'ca', 'co', 'ct', 'dc', 'de', 'fl', 'ga',
           'hi', 'id', 'il', 'in', 'ia', 'ks', 'ky', 'la', 'me', 'md', 'ma',
@@ -288,7 +289,9 @@ def main(config=None):
     templates = get_templates(pathname2)
 
     # For each state and table name, generate output table
+    i = 0
     for state in states:
+        starttime = time.time()
         print(f'Building tables for {state}')
         # Unzip and open the summary files
         for summary_level in summary_levels:
@@ -364,7 +367,7 @@ def main(config=None):
                             built += 1
 
                         # Print progress percentage
-                        progress_report(n / len(all_tables))
+                        #progress_report(n / len(all_tables))
 
                     print(f'\n{state} tables: saved {built}, dropped {n + 1 - built} empty')
 
@@ -372,6 +375,11 @@ def main(config=None):
                 stderr_print(f'Summary file error for {pathname}')
                 stderr_print(f'{e}')
                 continue
+        
+        progress_report(i / len(states))
+        print(f'finished {state} in {time.time() - starttime}')   
+        i+=1
+
 
 
 if __name__ == '__main__':
